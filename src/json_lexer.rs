@@ -94,7 +94,7 @@ pub fn lex(string: String) -> LexOutput {
                 }
             }
             't' => {
-                if (i + 4 < len) & (chars[i+1] == 'r') & (chars[i+2] == 'u') & (chars[i+3] == 'e') {
+                if (i + 3 < len) & (chars[i+1] == 'r') & (chars[i+2] == 'u') & (chars[i+3] == 'e') {
                     i += 4;
                     Lexeme::Bool(true)
                 } else {
@@ -102,7 +102,7 @@ pub fn lex(string: String) -> LexOutput {
                 }
             }
             'f' => {
-                if (i + 5 < len) & (chars[i+1] == 'a') & (chars[i+2] == 'l') & (chars[i+3] == 's') & (chars[i+4] == 'e') {
+                if (i + 4 < len) & (chars[i+1] == 'a') & (chars[i+2] == 'l') & (chars[i+3] == 's') & (chars[i+4] == 'e') {
                     i += 5;
                     Lexeme::Bool(false)
                 } else {
@@ -110,7 +110,7 @@ pub fn lex(string: String) -> LexOutput {
                 }
             }
             'n' => {
-                if (i + 4 < len) & (chars[i+1] == 'u') & (chars[i+2] == 'l') & (chars[i+3] == 'l') {
+                if (i + 3 < len) & (chars[i+1] == 'u') & (chars[i+2] == 'l') & (chars[i+3] == 'l') {
                     i += 4;
                     Lexeme::Null
                 } else {
