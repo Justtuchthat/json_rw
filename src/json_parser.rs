@@ -2,14 +2,7 @@ use crate::json_lexer::{LexOutput, lex, Lexeme};
 use crate::json_type::JSONtype;
 use std::collections::HashMap;
 
-#[derive(Debug)]
-pub enum ParseOutput {
-    JSONtype(JSONtype),
-    LexError,
-    ParseError(String),
-}
-
-pub fn parse_json(json_string: String) -> ParseOutput {
+pub fn parse_json(json_string: String) -> Result<JSONtype, String> {
     /* JSON grammar:
   x JSON = Value
   x Value = Object
@@ -32,45 +25,45 @@ pub fn parse_json(json_string: String) -> ParseOutput {
     let lexemes = match lex(json_string) {
         LexOutput::Lexemes(lexemes) => lexemes,
         LexOutput::StringNotTerminated => {
-            return ParseOutput::LexError;
+            return Err(String::from("String not terminated"));
         }
         LexOutput::MultipleDecimalsInFloat => {
-            return ParseOutput::LexError;
+            return Err(String::from("Multiple decimal points in float"));
         }
         LexOutput::UnknownCharacter => {
-            return ParseOutput::LexError;
+            return Err(String::from("Unknown character in json file"));
         }
     };
     let out = parse_value(&lexemes, &mut i);
     // return out;
     if i != lexemes.len() {
-        ParseOutput::ParseError(String::from("Unused lexemes left over"))
+        Err(String::from("Unused lexemes left over"))
     } else {
         out
     }
 }
 
-fn parse_value(lexemes: &Vec<Lexeme>, i: &mut usize) -> ParseOutput {
+fn parse_value(lexemes: &Vec<Lexeme>, i: &mut usize) -> Result<JSONtype, String> {
     match &lexemes[*i] {
         Lexeme::Null => {
             *i += 1;
-            ParseOutput::JSONtype(JSONtype::Null)
+            Ok(JSONtype::Null)
         },
         Lexeme::Bool(val) => {
             *i += 1;
-            ParseOutput::JSONtype(JSONtype::Bool(*val))
+            Ok(JSONtype::Bool(*val))
         },
         Lexeme::Int(val) => {
             *i += 1;
-            ParseOutput::JSONtype(JSONtype::Int(*val))
+            Ok(JSONtype::Int(*val))
         },
         Lexeme::Float(val) => {
             *i += 1;
-            ParseOutput::JSONtype(JSONtype::Float(*val))
+            Ok(JSONtype::Float(*val))
         },
         Lexeme::String(val) => {
             *i += 1;
-            ParseOutput::JSONtype(JSONtype::String(String::from(val)))
+            Ok(JSONtype::String(String::from(val)))
         },
         Lexeme::OpenBracket => {
             parse_list(lexemes, i)
@@ -79,52 +72,52 @@ fn parse_value(lexemes: &Vec<Lexeme>, i: &mut usize) -> ParseOutput {
             parse_object(lexemes, i)
         },
         Lexeme::CloseBracket => {
-            ParseOutput::ParseError(String::from("Unexpected character ']'"))
+            Err(String::from("Unexpected character ']'"))
         },
         Lexeme::CloseBrace => {
-            ParseOutput::ParseError(String::from("Unexpected character '}'"))
+            Err(String::from("Unexpected character '}'"))
         },
         Lexeme::Comma => {
-            ParseOutput::ParseError(String::from("Unexpected character ','"))
+            Err(String::from("Unexpected character ','"))
         },
         Lexeme::Colon => {
-            ParseOutput::ParseError(String::from("Unexpected character ':'"))
+            Err(String::from("Unexpected character ':'"))
         },
     }
 }
 
-fn parse_list(lexemes: &Vec<Lexeme>, i: &mut usize) -> ParseOutput {
+fn parse_list(lexemes: &Vec<Lexeme>, i: &mut usize) -> Result<JSONtype, String> {
     match lexemes[*i] {
         Lexeme::OpenBracket => { *i += 1; }
         _ => {
-            return ParseOutput::ParseError(String::from("Expected open bracket"));
+            return Err(String::from("Expected open bracket"));
         }
     };
     // case of empty list
     if let Lexeme::CloseBracket = lexemes[*i] {
         *i += 1;
-        return ParseOutput::JSONtype(JSONtype::List(Vec::new()));
+        return Ok(JSONtype::List(Vec::new()));
     };
     let list_items = parse_list_items(lexemes, i);
     match list_items {
-        ParseOutput::JSONtype(_) => {
+        Ok(_) => {
             match lexemes[*i] {
                 Lexeme::CloseBracket => {
                     *i += 1;
                     list_items
                 }
-                _ => ParseOutput::ParseError(String::from("Expected close bracket"))
+                _ => Err(String::from("Expected close bracket"))
             }
         },
         _ => list_items
     }
 }
 
-// only returns error message, or ParseOutput::JSONtype(JSONtype::List)
-fn parse_list_items(lexemes: &Vec<Lexeme>, i: &mut usize) -> ParseOutput {
+// only returns error message, or Ok(JSONtype::List)
+fn parse_list_items(lexemes: &Vec<Lexeme>, i: &mut usize) -> Result<JSONtype, String> {
     let value = parse_value(lexemes, i);
     match value {
-        ParseOutput::JSONtype(json) => {
+        Ok(json) => {
             // make first value into list
             let json_vec = vec![json];
             match lexemes[*i] {
@@ -134,49 +127,49 @@ fn parse_list_items(lexemes: &Vec<Lexeme>, i: &mut usize) -> ParseOutput {
                     let next_list_items = parse_list_items(lexemes, i);
                     match next_list_items {
                         // if output of parse_list_items is not a jsontype return the error
-                        ParseOutput::JSONtype(next_json) => {
+                        Ok(next_json) => {
                             match next_json {
                                 JSONtype::List(next_json_vec) => {
                                     // return concatinated list with the first item, and list of all following items.
-                                    ParseOutput::JSONtype(JSONtype::List([json_vec, next_json_vec].concat()))
+                                    Ok(JSONtype::List([json_vec, next_json_vec].concat()))
                                 },
                                 // if next item is not list, return an error, we should never hit this branch
-                                _ => ParseOutput::ParseError(String::from("Should not be possible: parse_list_items returned not a list"))
+                                _ => Err(String::from("Should not be possible: parse_list_items returned not a list"))
                             }
                         }
                         _ => next_list_items
                     }
                 },
                 // no comma, so last list item
-                _ => ParseOutput::JSONtype(JSONtype::List(json_vec))
+                _ => Ok(JSONtype::List(json_vec))
             }
         }
         _ => value
     }
 }
 
-fn parse_object(lexemes: &Vec<Lexeme>, i: &mut usize) -> ParseOutput {
+fn parse_object(lexemes: &Vec<Lexeme>, i: &mut usize) -> Result<JSONtype, String> {
     match lexemes[*i] {
         Lexeme::OpenBrace => { *i += 1; }
         _ => {
-            return ParseOutput::ParseError(String::from("Expected open brace"));
+            return Err(String::from("Expected open brace"));
         }
     };
     // case of empty object
     if let Lexeme::CloseBrace = lexemes[*i] {
         *i += 1;
-        return ParseOutput::JSONtype(JSONtype::Object(HashMap::new()));
+        return Ok(JSONtype::Object(HashMap::new()));
     };
     let object_items = parse_object_items(lexemes, i);
     match object_items {
-        ParseOutput::JSONtype(_) => {
+        Ok(_) => {
             match lexemes[*i] {
                 Lexeme::CloseBrace => {
                     *i += 1;
                     object_items
                 }
                 _ => {
-                    ParseOutput::ParseError(String::from("Expected close brace"))
+                    Err(String::from("Expected close brace"))
                 }
             }
         },
@@ -184,32 +177,32 @@ fn parse_object(lexemes: &Vec<Lexeme>, i: &mut usize) -> ParseOutput {
     }
 }
 
-// only returns error message, or ParseOutput::JSONtype(JSONtype::Object)
-fn parse_object_items(lexemes: &Vec<Lexeme>, i: &mut usize) -> ParseOutput {
+// only returns error message, or Ok(JSONtype::Object)
+fn parse_object_items(lexemes: &Vec<Lexeme>, i: &mut usize) -> Result<JSONtype, String> {
     let json_object = parse_object_item(lexemes, i);
     match &json_object {
-        ParseOutput::JSONtype(json_map) => {
+        Ok(json_map) => {
             match lexemes[*i] {
                 Lexeme::Comma => {
                     *i += 1;
                     if let JSONtype::Object(map) = json_map {
                         let next_json_object = parse_object_items(lexemes, i);
                         match next_json_object {
-                            ParseOutput::JSONtype(next_json_map) => {
+                            Ok(next_json_map) => {
                                 match next_json_map {
                                     JSONtype::Object(mut next_map) => {
                                         for (key, value) in map.iter() {
                                             next_map.insert(String::from(key), value.clone());
                                         }
-                                        ParseOutput::JSONtype(JSONtype::Object(next_map))
+                                        Ok(JSONtype::Object(next_map))
                                     }
-                                    _ => ParseOutput::ParseError(String::from("Should not be reached, parse_object_items returned something other than a hashmap"))
+                                    _ => Err(String::from("Should not be reached, parse_object_items returned something other than a hashmap"))
                                 }
                             }
                             _ => next_json_object
                         }
                     } else {
-                        ParseOutput::ParseError(String::from("Should not be reached, parse_object_item did not return a map"))
+                        Err(String::from("Should not be reached, parse_object_item did not return a map"))
                     }
                 }
                 _ => json_object
@@ -219,7 +212,7 @@ fn parse_object_items(lexemes: &Vec<Lexeme>, i: &mut usize) -> ParseOutput {
     }
 }
 
-fn parse_object_item(lexemes: &Vec<Lexeme>, i: &mut usize) -> ParseOutput {
+fn parse_object_item(lexemes: &Vec<Lexeme>, i: &mut usize) -> Result<JSONtype, String> {
     match &lexemes[*i] {
         Lexeme::String(key) => {
             *i += 1;
@@ -228,17 +221,17 @@ fn parse_object_item(lexemes: &Vec<Lexeme>, i: &mut usize) -> ParseOutput {
                     *i += 1;
                     let next_val = parse_value(lexemes, i);
                     match next_val {
-                        ParseOutput::JSONtype(value) => {
+                        Ok(value) => {
                             let mut map: HashMap<String, JSONtype> = HashMap::new();
                             map.insert(String::from(key), value);
-                            ParseOutput::JSONtype(JSONtype::Object(map))
+                            Ok(JSONtype::Object(map))
                         }
                         _ => next_val
                     }
                 }
-                _ => ParseOutput::ParseError(String::from("Expected colon"))
+                _ => Err(String::from("Expected colon"))
             }
         }
-        _ => ParseOutput::ParseError(String::from("Expected string"))
+        _ => Err(String::from("Expected string"))
     }
 }
